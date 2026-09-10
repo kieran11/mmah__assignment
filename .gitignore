@@ -7,6 +7,5 @@
 .env.*
 
 data/raw/
-data/processed/
 
 output/

@@ -9,43 +9,16 @@ library(stringr)
 # ==============================================================================
 # 1. LOCATE 2021 STATISTICS CANADA TABLE
 # ==============================================================================
-data_path <- "C:/Users/shahki/Downloads/"
-source(paste0(data_path, "helper_functions.R"))
-stats_can_path <-paste0(data_path, "98100247/98100247.csv" )
+script_path <- "H:/github_repos/Assignment_MMAH/R/"
+raw_data_path <- "C:/Users/shahki/Downloads/"
+processed_data_path <- "H:/github_repos/Assignment_MMAH/data/processed/"
+
+source(paste0(script_path, "helper_functions.R"))
+
+stats_can_path <-paste0(raw_data_path, "98100247/98100247.csv" )
 
 stats_can_2021 <- data.table::fread(stats_can_path)
  
-# ==============================================================================
-# 2. IDENTIFY TABLE COLUMNS
-# ==============================================================================
-
-header_2021 <- readr::read_csv(
-  stats_can_path,
-  n_max = 0,
-  show_col_types = FALSE
-)
-
-nms_2021 <- names(header_2021)
-
-col_dguid <- find_one_column(nms_2021, "^DGUID$")
-col_geo <- find_one_column(nms_2021, "^GEO$")
-col_shelter <- find_one_column(
-  nms_2021,
-  "Shelter-cost-to-income ratio"
-)
-col_tenure <- "Tenure including presence of mortgage payments and subsidized housing (8):Total - Tenure including presence of mortgage payments and subsidized housing[1]"
-col_core <- find_one_column(nms_2021, "Core housing need")
-col_condition <- find_one_column(nms_2021, "Dwelling condition")
-col_suitability <- find_one_column(
-  nms_2021,
-  "Housing suitability"
-)
-
-
-# ==============================================================================
-# 3. READ ONLY RELEVANT 2021 ROWS
-# ==============================================================================
-#
 
 
 analysis_2021 <- stats_can_2021[
@@ -158,12 +131,12 @@ subset_predictor_set <- full_predictor_set[CHARACTERISTIC_NAME %in% c("  Renter"
 ### additional field linkages. 
 
 housing_starts_2021 <- data.table::fread(
-  paste0(data_path, "ontario_housing_starts_2020_2021.csv" )
+  paste0(processed_data_path, "ontario_housing_starts_2020_2021.csv" )
   ) %>% 
   mutate(simplified_city_nm = clean_municipality(municipality)) 
 
 housing_targets <- data.table::fread(
-  paste0(data_path, "ontarios_housing_supply_-_january_december_2023_-_en.csv" )
+  paste0(processed_data_path, "ontarios_housing_supply_-_january_december_2023_-_en.csv" )
   ) %>%
   mutate(simplified_city_nm = clean_municipality(Municipality )) %>% 
   dplyr::select(simplified_city_nm, `Housing Target Status`)  
@@ -177,4 +150,5 @@ final_analytic_set <- analysis_2021_subset %>%
   mutate_at(c("starts_2020","starts_2021"), ~ifelse(is.na(.),0,.))
 
 data.table::fwrite(final_analytic_set, 
-                   "C:/Users/shahki/Downloads/final_analytic_dataset.csv")
+                   paste0(processed_data_path,"final_analytic_dataset.csv")
+)
