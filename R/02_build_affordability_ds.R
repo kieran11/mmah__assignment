@@ -147,7 +147,11 @@ final_analytic_set <- analysis_2021_subset %>%
   mutate(simplified_city_nm =clean_municipality(GEO )) %>% 
   left_join(housing_starts_2021, by = "simplified_city_nm") %>% 
   left_join(housing_targets, by = "simplified_city_nm") %>% 
-  mutate_at(c("starts_2020","starts_2021"), ~ifelse(is.na(.),0,.))
+  mutate_at(c("starts_2020","starts_2021"), ~ifelse(is.na(.),0,.)) %>% 
+  mutate(
+    starts_2020_per_1000 =
+      1000 * starts_2020 / `Population, 2021`
+  )
 
 data.table::fwrite(final_analytic_set, 
                    paste0(processed_data_path,"final_analytic_dataset.csv")

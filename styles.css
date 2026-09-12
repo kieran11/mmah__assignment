@@ -1,0 +1,30 @@
+/* Compact knitr tables in RevealJS */
+.reveal .slides section table.compact-kable {
+  font-size: 0.48em !important;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Reduce cell spacing */
+.reveal .slides section table.compact-kable th,
+.reveal .slides section table.compact-kable td {
+  padding: 0.15em 0.30em !important;
+  line-height: 1.1;
+}
+
+/* Keep headings from wrapping excessively */
+.reveal .slides section table.compact-kable th {
+  white-space: nowrap;
+}
+
+/* Caption */
+.reveal .slides section table.compact-kable caption {
+  font-size: 0.85em;
+  margin-bottom: 0.3em;
+}
+
+/* Smaller explanatory text */
+.reveal .small-text {
+  font-size: 0.70em;
+}

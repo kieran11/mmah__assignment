@@ -1,0 +1,580 @@
+---
+title: "MMAH Presentation"
+author: "Kieran Shah"
+editor: visual
+format:
+  revealjs:
+    css: styles.css
+    slide-number: true
+    embed-resources: true
+output:
+  ioslides_presentation:
+    widescreen: true
+    self_contained: false
+params:
+  data_file: "data/processed/final_analytic_dataset.csv"
+  output_dir: "eda/"
+---
+
+```{r setup, echo = FALSE, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 8,
+  fig.height = 5,
+  dpi = 150
+)
+
+knitr::opts_knit$set(
+  root.dir = "H:/github_repos/Assignment_MMAH/"
+)
+
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(knitr)
+library(scales)
+library(sf)
+library(ggplot2)
+library(scales)
+library(knitr)
+library(stringr)
+library(leaflet)
+
+analytic_file <- "H:/github_repos/Assignment_MMAH/data/processed/final_analytic_dataset.csv"
+
+# Point this to the .shp file you downloaded
+boundary_file <- "C:/Users/shahki/Downloads/lcsd000b21a_e/lcsd000b21a_e.shp"
+
+
+# ------------------------------------------------------------
+# 2. Read analytic data
+# ------------------------------------------------------------
+
+analytic_data <- fread(
+  analytic_file,
+  encoding = "Latin-1"
+) %>%
+  as_tibble() %>%
+  dplyr::rename(
+    population_2021 =
+      `Population, 2021`,
+    population_growth_pct =
+      `Population percentage change, 2016 to 2021`,
+    population_density =
+      `Population density per square kilometre`,
+    median_age =
+      `Median age of the population`,
+    average_household_size =
+      `Average household size`,
+    median_income_1p =
+      `Median total income of one-person households in 2020 ($)`,
+    renter_pct =
+      `Renter`,
+    unsuitable_major_repairs_pct =
+      `'Not suitable' and 'major repairs needed'`,
+    housing_target_status =
+      `Housing Target Status`
+  ) %>% 
+  mutate(
+    
+    # Extract 7-digit Census Subdivision identifier
+    CSDUID = str_sub(
+      as.character(DGUID),
+      -7
+    ),
+    
+    # Calculate affordability measures
+    affordability_30plus =
+      100 *
+      (`30% to less than 50%` + `50% or more`) /
+      `Total - Shelter-cost-to-income ratio`,
+    
+    affordability_50plus =
+      100 *
+      `50% or more` /
+      `Total - Shelter-cost-to-income ratio`,
+    affordability_30plus_pct =
+      100 * (`30% to less than 50%` + `50% or more`) / `Total - Shelter-cost-to-income ratio`,
+    
+    affordability_50plus_pct =
+      100 * `50% or more` / `Total - Shelter-cost-to-income ratio`,
+    
+    log_population_density =
+      log1p(population_density),
+    
+    # A municipality name in the CMHC join indicates actual CMHC coverage.
+    # Rows without a CMHC match may currently contain zero after NA replacement;
+    # restore these to NA so "not covered" is not interpreted as "zero starts".
+    cmhc_covered =
+      !is.na(municipality),
+    
+    starts_2020_cmhc =
+      if_else(
+        cmhc_covered,
+        as.numeric(starts_2020),
+        NA_real_
+      ),
+    
+    starts_2021_cmhc =
+      if_else(
+        cmhc_covered,
+        as.numeric(starts_2021),
+        NA_real_
+      ),
+    
+    starts_2020_per_1000_clean =
+      if_else(
+        cmhc_covered &
+          !is.na(population_2021) &
+          population_2021 > 0,
+        1000 * starts_2020_cmhc / population_2021,
+        NA_real_
+      )
+  )
+
+
+```
+
+## Introduction and Purpose
+
+::: {.small-text}
+
+Affordability is major concern across Ontario.
+
+- A recent poll conducted by Angus Reid identified the cost of living and housing affordability as a the most important issue.
+
+This presentation will seek to identify what issues are most associated with affordability.
+
+A quick literature review suggests that the following could be causes.
+
+- [Housing construction is not keeping up with population growth. Ontario's population grew much faster than anticipated between 2022 and 2023.](https://institute.smartprosperity.ca/sites/default/files/Ontarios-Need-for-1.7-Million-More-Homes-an-update.pdf?utm_source=chatgpt.com)
+
+- [There are different regulatory barriers causing the increase in prices and decrease in affordability.](https://cdhowe.org/publication/benjamin-dachis-crunch-time-housing-ontario/?utm_source=chatgpt.com)
+
+:::
+
+## Data Sources {style="{.smaller}"}
+
+::: {.small-text}
+
+Statistics Canada provided the two main data sources for this presentation at the Census Subdivision level (CSD):
+
+1.  `Table 98-10-0247-01` provided affordability variables.
+2.  `Table 98-401-X2021021` is the summary of the predictor variables.
+
+This presentation also explored the CMHC housing starts data from 2021.
+
+And as a final bit of analysis, this presentation touched on the Ontario municipal housing target data.
+
+Note, the two latter datasets covered many fewer municipalities.
+
+:::
+
+## EDA: Affordability Outcome Distribution {style="{.smaller}"}
+
+```{r eda_1}
+
+
+analytic_data %>%
+  select(
+    `Spending ≥30%` = affordability_30plus_pct,
+    `Spending ≥50%` = affordability_50plus_pct
+  ) %>%
+  pivot_longer(
+    everything(),
+    names_to = "Measure",
+    values_to = "Percent"
+  ) %>%
+  ggplot(aes(x = Percent)) +
+  geom_histogram(
+    bins = 25,
+    boundary = 0
+  ) +
+  facet_wrap(
+    ~ Measure,
+    nrow = 1,
+    scales = "free_y"
+  ) +
+  labs(
+    x = "Households (%)",
+    y = "Municipalities",
+    title = "Distribution of housing affordability burden across Ontario"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    strip.text = element_text(face = "bold"),
+    plot.title = element_text(face = "bold")
+  )
+
+```
+
+## Affordability Map
+
+```{r mapping_slide}
+
+csd <- st_read(
+  boundary_file,
+  quiet = TRUE
+)
+
+
+ontario_csd <- csd %>%
+  filter(
+    PRUID == "35"
+  ) %>%
+  mutate(
+    CSDUID = as.character(CSDUID)
+  )
+
+map_data <- ontario_csd %>%
+  left_join(
+    analytic_data,
+    by = "CSDUID"
+  )
+
+ap_data_leaflet <- map_data %>%
+  st_make_valid() %>%
+  
+  # Use a projected coordinate system so tolerance is in metres
+  st_transform(3347) %>%
+  
+  # Simplify boundaries: 500 m is usually plenty for an Ontario-wide map
+  st_simplify(
+    dTolerance = 500,
+    preserveTopology = TRUE
+  ) %>%
+  
+  # Leaflet requires longitude/latitude
+  st_transform(4326)
+
+pal_30 <- colorNumeric(
+  palette = "magma",
+  domain = map_data$affordability_30plus[
+    !is.na(map_data$affordability_30plus)
+  ],
+  na.color = "#E5E5E5"
+)
+
+leaflet(ap_data_leaflet,
+        height = "500px") %>%
+  addPolygons(
+    fillColor = ~pal_30(affordability_30plus),
+    fillOpacity = 0.85,
+    color = "white",
+    weight = 0.4,
+    label = ~paste0(
+      CSDNAME, ": ",
+      round(affordability_30plus, 1), "%"
+    )
+  ) %>%
+  addLegend(
+    position = "topright",
+    pal = pal_30,
+    values = ap_data_leaflet$affordability_30plus[
+      !is.na(ap_data_leaflet$affordability_30plus)
+    ],
+    title = "Households<br>spending<br>≥30%"
+  )
+```
+
+## EDA Predictors
+
+```{r eda_pred}
+
+univariate_plot_data <- analytic_data  %>% 
+  transmute(
+    affordability_30plus,
+    `Renter share (%)` = renter_pct,
+    `Median age (years)` = median_age,
+    `Median income ($)` = median_income_1p,
+    `Log population density` = log_population_density,
+    `Average household size` = average_household_size,
+    `Unsuitable + major repairs (%)` = unsuitable_major_repairs_pct,
+    `Population growth 2016–2021 (%)` = population_growth_pct
+  ) %>% 
+  pivot_longer(
+    cols = -affordability_30plus,
+    names_to = "Predictor",
+    values_to = "Value"
+  ) %>% 
+  filter(
+    !is.na(affordability_30plus),
+    !is.na(Value)
+  )
+
+univariate_correlations <- univariate_plot_data  %>% 
+  group_by(Predictor)  %>% 
+  summarise(
+    r = cor(
+      Value,
+      affordability_30plus,
+      use = "complete.obs"
+    ),
+    .groups = "drop"
+  ) %>% 
+  mutate(
+    facet_label = paste0(
+      Predictor,
+      "\nr = ",
+      sprintf("%.2f", r)
+    )
+  )
+
+univariate_plot_data <- univariate_plot_data  %>% 
+  left_join(
+    univariate_correlations,
+    by = "Predictor"
+  )
+
+ggplot(
+  univariate_plot_data,
+  aes(
+    x = Value,
+    y = affordability_30plus
+  )
+) +
+  geom_point(
+    alpha = 0.45,
+    size = 1.2
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = FALSE,
+    linewidth = 0.7
+  ) +
+  facet_wrap(
+    ~ facet_label,
+    scales = "free_x",
+    ncol = 3
+  ) +
+  labs(
+    x = NULL,
+    y = "Households spending ≥30% (%)",
+    title = "Univariate relationships with housing affordability burden"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    strip.text = element_text(
+      face = "bold",
+      size = 9
+    ),
+    plot.title = element_text(
+      face = "bold"
+    )
+  )
+
+```
+
+## Modelling Approach {style="{.smaller}"}
+
+::: {.small-text}
+
+We consider the following variables as predictors when modelling our 30% and 50% affordability thresholds where we have 409 complete rows after missing cells are removed.
+
+1.   The percent of the population renting
+2.  The median Age
+3.  The average household size
+4.  The population growth between 2016 and 2021
+5.  The median income
+6.  The percent of the population with unsuitable repairs on their dwelling
+7.  The density, and then the log of the density of the CSD
+
+:::
+
+::: {.small-text}
+
+We run three types of regression to model the affordability metrics.
+
+1.  OLS: modeling the mean predicted value of affordability
+2.  Fractional Logit: treats affordability as an expected proportion, ensuring all fitted values are between 0 and 1
+
+:::
+
+## Best way to model
+
+::: {.small-text}
+- We compared OLS and fractional logistic regression and found very little difference in predictive performance.
+:::
+
+```{r}
+cv_rmse_log_density <- data.table::fread(
+  "H:/github_repos/Assignment_MMAH/data/processed/rmse_log_results.csv"
+)
+
+knitr::kable(
+  cv_rmse_log_density,
+  format = "html",
+  digits = 2,
+  table.attr = 'class="compact-kable"',
+  caption = "10-fold cross-validation RMSE (percentage points)"
+)
+
+```
+
+::: {.small-text}
+In addition, we conducted sensitivity analyses:
+
+1. Household-weighted models
+2. Models including housing starts, which substantially reduced the available sample
+:::
+
+## Model Results
+
+```{r ame_table}
+
+frac_results <- data.table::fread(
+  "H:/github_repos/Assignment_MMAH/data/processed/avg_marg_effects.csv"
+)
+
+frac_table <- frac_results %>%
+  mutate(
+    sig_30 = case_when(
+      p_30 < 0.001 ~ "***",
+      p_30 < 0.01  ~ "**",
+      p_30 < 0.05  ~ "*",
+      TRUE         ~ ""
+    ),
+    
+    sig_50 = case_when(
+      p_50 < 0.001 ~ "***",
+      p_50 < 0.01  ~ "**",
+      p_50 < 0.05  ~ "*",
+      TRUE         ~ ""
+    ),
+    
+    estimate_30 = sprintf(
+      "%.3f%s",
+      estimate_30,
+      sig_30
+    ),
+    
+    ame_30 = sprintf(
+      "%.3f",
+      ame_30
+    ),
+    
+    p_30 = ifelse(
+      p_30 < 0.001,
+      "<0.001",
+      sprintf("%.3f", p_30)
+    ),
+    
+    estimate_50 = sprintf(
+      "%.3f%s",
+      estimate_50,
+      sig_50
+    ),
+    
+    ame_50 = sprintf(
+      "%.3f",
+      ame_50
+    ),
+    
+    p_50 = ifelse(
+      p_50 < 0.001,
+      "<0.001",
+      sprintf("%.3f", p_50)
+    )
+  ) %>%
+  select(
+    term,
+    estimate_30,
+    ame_30,
+    estimate_50,
+    ame_50,
+  )
+
+knitr::kable(
+  frac_table,
+  format = "html",
+  col.names = c(
+    "Predictor",
+    "30%+ Estimate",
+    "30%+ AME",
+    "50%+ Estimate",
+    "50%+ AME"
+  ),
+  align = c(
+    "l",
+    "r",
+    "r",
+    "r",
+    "r"
+  ),
+  digits = 2,
+  table.attr = 'class="compact-kable"',
+  caption = "Fractional logistic regression results"
+)
+```
+
+::: {.small-text}
+
+- As we can see the estimate between the two outcomes are substantially different. The two most important variables are average household size and unsuitable repairs.
+
+  - A one-person increase in average household size is associated with an approximately 12 percentage-point increase in the share of households experiencing affordability challenges.
+
+  - A one-point increase in the percent of unsuitable/disrepair dwellings is associated with a 3 percentage-point increase in the share of households experiencing affordability challenges.
+
+:::
+
+## Implications and other data sources: 
+
+::: {.small-text}
+
+- The CMHC and Ontario Government provide two additional data sources.
+
+:::
+
+```{r policy_table}
+highest_affordability <- analytic_data |>
+  filter(!is.na(affordability_30plus)) |>
+  arrange(desc(affordability_30plus)) |>
+  transmute(
+    Municipality = GEO,
+    `Household Size (2.6)` = average_household_size,
+    `% Renter (22.8%)` = renter_pct,
+    `30%+ (%)` = affordability_30plus,
+    `Housing target status` =
+      dplyr::coalesce(
+        housing_target_status,
+        "Not available"
+      ),
+    `2020 starts per 1,000` =
+      starts_2020_per_1000_clean
+  ) |>
+  slice_head(n = 10)
+
+knitr::kable(
+  highest_affordability,
+  format = "html",
+  table.attr = 'class="compact-kable"',
+  digits = 1,
+  caption = "Ten CSDs with the highest 30%+ affordability burden"
+)
+```
+
+::: {.small-text}
+
+- In 2020, only Brampton and Oshawa had more than .1 housing starts per 1000 households.
+
+- Moving forward, only the City of Toronto has exceeded its housing target.
+
+:::
+
+## Limitations
+
+::: {.small-text}
+
+There are many limitations to this study:
+
+1.  There is no time element.
+    1.  We're unable to capture the trend in affordability. Using cross sectional data prevents us from answering the very simple question of 'is affordability worse?'.
+    2.  CMHC data only went as far back as 2020. Housing starts captures January 2020 starts and does not allow us to see a five or ten-year trend.
+2.  The 2021 Census
+    1.  2020 and 2021 were affected Covid-19
+        1.  Before tax income may be affected because there were temporary layoffs, coupled with government support.
+
+:::

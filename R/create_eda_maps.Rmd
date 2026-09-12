@@ -1,0 +1,166 @@
+---
+title: "Affordable Map"
+output: html_document
+date: "2026-09-10"
+---
+
+```{r setup,  include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 8,
+  fig.height = 5,
+  dpi = 150
+)
+
+knitr::opts_knit$set(
+  root.dir = "H:/github_repos/Assignment_MMAH/"
+)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+library(sf)
+library(data.table)
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(leaflet)
+
+analytic_file <- "H:/github_repos/Assignment_MMAH/data/processed/final_analytic_dataset.csv"
+
+# Point this to the .shp file you downloaded
+boundary_file <- "C:/Users/shahki/Downloads/lcsd000b21a_e/lcsd000b21a_e.shp"
+
+
+# ------------------------------------------------------------
+# 2. Read analytic data
+# ------------------------------------------------------------
+
+analytic_data <- fread(
+  analytic_file,
+  encoding = "Latin-1"
+) %>%
+  as_tibble() %>%
+  mutate(
+
+    # Extract 7-digit Census Subdivision identifier
+    CSDUID = str_sub(
+      as.character(DGUID),
+      -7
+    ),
+
+    # Calculate affordability measures
+    affordability_30plus =
+      100 *
+      (`30% to less than 50%` + `50% or more`) /
+      `Total - Shelter-cost-to-income ratio`,
+
+    affordability_50plus =
+      100 *
+      `50% or more` /
+      `Total - Shelter-cost-to-income ratio`
+    
+  )
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+csd <- st_read(
+  boundary_file,
+  quiet = TRUE
+)
+
+
+ontario_csd <- csd %>%
+  filter(
+    PRUID == "35"
+  ) %>%
+  mutate(
+    CSDUID = as.character(CSDUID)
+  )
+
+map_data <- ontario_csd %>%
+  left_join(
+    analytic_data,
+    by = "CSDUID"
+  )
+
+
+
+```
+
+
+
+```{r}
+
+
+# Make sure geometry is valid and in longitude/latitude
+map_data_leaflet <- map_data %>%
+  sf::st_make_valid() %>%
+  sf::st_transform(4326)
+
+
+ap_data_leaflet <- map_data %>%
+  st_make_valid() %>%
+
+  # Use a projected coordinate system so tolerance is in metres
+  st_transform(3347) %>%
+
+  # Simplify boundaries: 500 m is usually plenty for an Ontario-wide map
+  st_simplify(
+    dTolerance = 500,
+    preserveTopology = TRUE
+  ) %>%
+
+  # Leaflet requires longitude/latitude
+  st_transform(4326)
+
+pal_30 <- colorNumeric(
+  palette = "magma",
+  domain = map_data$affordability_30plus,
+  na.color = "#E5E5E5"
+)
+
+```
+
+
+```{r leaflet_plot}
+
+leaflet(ap_data_leaflet) %>%
+  addPolygons(
+    fillColor = ~pal_30(affordability_30plus),
+    fillOpacity = 0.85,
+    color = "white",
+    weight = 0.4,
+    label = ~paste0(
+      CSDNAME, ": ",
+      round(affordability_30plus, 1), "%"
+    )
+  ) %>%
+  addLegend(
+    pal = pal_30,
+    values = ~affordability_30plus,
+    title = "Households<br>spending ≥30%"
+  )  %>%
+  htmlwidgets::onRender("
+    function(el, x) {
+      var legend = el.querySelector('.legend');
+      if (legend) {
+        legend.style.transform = 'translateX(-70px)';
+      }
+    }
+  ")
+```
+
