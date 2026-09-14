@@ -555,29 +555,3 @@ data.table::fwrite(
 print(
   cv_rmse_log_density
 )
-
-# Presentation-ready Markdown table
-dir.create(
-  "output/model",
-  recursive = TRUE,
-  showWarnings = FALSE
-)
-
-write.csv(
-  cv_rmse_log_density,
-  "output/model/cv_rmse_log_density.csv",
-  row.names = FALSE
-)
-
-writeLines(
-  knitr::kable(
-    cv_rmse_log_density,
-    format = "pipe",
-    digits = 2,
-    caption = paste(
-      "10-fold cross-validation RMSE (percentage points);",
-      "all models use log(1 + population density)."
-    )
-  ),
-  "output/model/cv_rmse_log_density.md"
-)

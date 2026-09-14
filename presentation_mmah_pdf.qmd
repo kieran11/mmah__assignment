@@ -3,16 +3,17 @@ title: "Housing Affordability Across Ontario Municipalities"
 author: "Kieran Shah"
 date: "September 14, 2026"
 
-editor: visual
 format:
-  revealjs:
-    css: styles.css
-    slide-number: true
-    embed-resources: true
-output:
-  ioslides_presentation:
-    widescreen: true
-    self_contained: false
+  beamer:
+    aspectratio: 169
+    slide-level: 2
+    keep-tex: false
+
+execute:
+  echo: false
+  warning: false
+  message: false
+
 params:
   data_file: "data/processed/final_analytic_dataset.csv"
   output_dir: "eda/"
@@ -142,6 +143,7 @@ analytic_data <- fread(
 
 ## Introduction and Purpose
 
+:::: small-text
 ::: small-text
 Affordability is major concern across Ontario.
 
@@ -154,10 +156,12 @@ Statistics Canada provided the two main data sources for this presentation at th
 1.  `Table 98-10-0247-01` provided affordability variables.
 2.  `Table 98-401-X2021021` is the summary of the predictor variables.
 :::
+::::
 
-## EDA: Affordability Distribution {style="{.smaller}"}
+## EDA: Affordability Outcome Distribution {style="{.smaller}"}
 
 ```{r eda_1}
+
 
 mean_values <- tibble(
   Measure = c("Spending ≥30%", "Spending ≥50%"),
@@ -211,6 +215,7 @@ analytic_data %>%
     strip.text = element_text(face = "bold"),
     plot.title = element_text(face = "bold")
   )
+
 ```
 
 ## Affordability Map
@@ -222,11 +227,8 @@ csd <- st_read(
   quiet = TRUE
 )
 
-
 ontario_csd <- csd %>%
-  filter(
-    PRUID == "35"
-  ) %>%
+  filter(PRUID == "35") %>%
   mutate(
     CSDUID = as.character(CSDUID)
   )
@@ -237,55 +239,43 @@ map_data <- ontario_csd %>%
     by = "CSDUID"
   )
 
-ap_data_leaflet <- map_data %>%
+map_data_static <- map_data %>%
   st_make_valid() %>%
-  
-  # Use a projected coordinate system so tolerance is in metres
-  st_transform(3347) %>%
-  
-  # Simplify boundaries: 500 m is usually plenty for an Ontario-wide map
-  st_simplify(
-    dTolerance = 500,
-    preserveTopology = TRUE
-  ) %>%
-  
-  # Leaflet requires longitude/latitude
-  st_transform(4326)
+  st_transform(3347)
 
-pal_30 <- colorNumeric(
-  palette = "magma",
-  domain = map_data$affordability_30plus[
-    !is.na(map_data$affordability_30plus)
-  ],
-  na.color = "#E5E5E5"
-)
-
-leaflet(ap_data_leaflet,
-        height = "500px") %>%
-  addPolygons(
-    fillColor = ~pal_30(affordability_30plus),
-    fillOpacity = 0.85,
+ggplot(map_data_static) +
+  geom_sf(
+    aes(fill = affordability_30plus),
     color = "white",
-    weight = 0.4,
-    label = ~paste0(
-      CSDNAME, ": ",
-      round(affordability_30plus, 1), "%"
-    )
-  ) %>%
-  addLegend(
-    position = "topright",
-    pal = pal_30,
-    values = ap_data_leaflet$affordability_30plus[
-      !is.na(ap_data_leaflet$affordability_30plus)
-    ],
-    title = "Households<br>spending<br>≥30%"
+    linewidth = 0.08
+  ) +
+  scale_fill_viridis_c(
+    option = "magma",
+    na.value = "grey85",
+    name = "Households\nspending ≥30%"
+  ) +
+  coord_sf(datum = NA) +
+  labs(
+    title = "Housing affordability burden across Ontario"
+  ) +
+  theme_void(base_size = 12) +
+  theme(
+    plot.title = element_text(
+      face = "bold",
+      hjust = 0.5
+    ),
+    legend.position = "right",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8)
   )
 ```
 
 ## EDA Predictors
 
 ```{r eda_pred}
-
+#| fig-height: 3.5
+#| fig-width: 7.5
+#| out-width: "95%"
 univariate_plot_data <- analytic_data  %>% 
   transmute(
     affordability_30plus,
@@ -390,7 +380,7 @@ predictor_summary <- analytic_data %>%
     `Percent Renting` =renter_pct,
     `Median Age` = median_age,
     `Median Total Income` = income_10k,
-    `Hundreds of people per km2` = density_100,
+    `Hundres of people per km2` = density_100,
     `Average Household Size` = average_household_size,
     `Not suitable and major repairs needed` = unsuitable_major_repairs_pct,
     `2016 to 2021 population growth` = population_growth_pct
@@ -401,7 +391,7 @@ predictor_summary <- analytic_data %>%
         `Percent Renting`,
         `Median Age`,
         `Median Total Income`,
-        `Hundreds of people per km2`,
+        `Hundres of people per km2`,
         `Average Household Size`,
         `Not suitable and major repairs needed`,
         `2016 to 2021 population growth`
@@ -420,26 +410,31 @@ predictor_summary <- analytic_data %>%
     names_pattern = "(.*)_(mean|median|q1|q3)$"
   )
 
+
 knitr::kable(
   predictor_summary,
-  format = "html",
+  format = "latex",
+  booktabs = TRUE,
   digits = 1,
-  table.attr = 'class="compact-kable"',
   caption = "Summary of candidate predictors"
-)
+) %>%
+  kableExtra::kable_styling(
+    latex_options = "scale_down",
+    font_size = 7
+  )
 ```
 
 ::: small-text
-We run two types of regression to model the two affordability metrics.
+We run three types of regression to model the affordability metrics.
 
-1.  OLS: models the conditional mean of affordability percentage as a linear function of the predictors.
-2.  Fractional Logit: models affordability as an expected affordability proportion, ensuring all fitted values are between 0 and 1.
+1.  OLS: modeling the mean predicted value of affordability
+2.  Fractional Logit: treats affordability as an expected proportion, ensuring all fitted values are between 0 and 1
 :::
 
 ## Best way to model
 
 ::: small-text
-- We compared OLS and fractional logit regression and found very little difference in predictive performance.
+- We compared OLS and fractional logistic regression and found very little difference in predictive performance.
 :::
 
 ```{r}
@@ -447,18 +442,23 @@ cv_rmse_log_density <- data.table::fread(
   "H:/github_repos/Assignment_MMAH/data/processed/rmse_log_results.csv"
 )
 
+
 knitr::kable(
   cv_rmse_log_density,
-  format = "html",
-  digits = 2,
-  table.attr = 'class="compact-kable"',
+  format = "latex",
+  booktabs = TRUE,
+  digits = 1,
   caption = "10-fold cross-validation RMSE (percentage points)"
-)
+) %>%
+  kableExtra::kable_styling(
+    latex_options = "scale_down",
+    font_size = 7
+  )
 
 ```
 
 ::: small-text
-In addition, we conducted sensitivity analyses with the log of population density.
+In addition, we conducted sensitivity analyses:
 :::
 
 ## Model Results
@@ -529,7 +529,7 @@ frac_table <- frac_results %>%
 
 knitr::kable(
   frac_table,
-  format = "html",
+  format = "latex",
   col.names = c(
     "Predictor",
     "30%+ Estimate",
@@ -537,17 +537,14 @@ knitr::kable(
     "50%+ Estimate",
     "50%+ AME"
   ),
-  align = c(
-    "l",
-    "r",
-    "r",
-    "r",
-    "r"
-  ),
-  digits = 2,
-  table.attr = 'class="compact-kable"',
+  booktabs = TRUE,
+  digits = 1,
   caption = "Fractional logistic regression results"
-)
+) %>%
+  kableExtra::kable_styling(
+    latex_options = "scale_down",
+    font_size = 7
+  )
 ```
 
 ::: small-text
@@ -558,7 +555,7 @@ knitr::kable(
   - A one-point increase in the percent of unsuitable/disrepair dwellings is associated with a **3 percentage-point increase** in the share of households experiencing affordability challenges.
 :::
 
-## Other data sources:
+## Implications and other data sources:
 
 ::: small-text
 - The CMHC and Ontario Government provide two additional data sources.
@@ -585,11 +582,16 @@ highest_affordability <- analytic_data |>
 
 knitr::kable(
   highest_affordability,
-  format = "html",
-  table.attr = 'class="compact-kable"',
+  format = "latex",
+  booktabs = TRUE,
   digits = 1,
   caption = "Ten CSDs with the highest 30%+ affordability burden"
-)
+) %>%
+  kableExtra::kable_styling(
+    latex_options = "scale_down",
+    font_size = 7
+  )
+
 ```
 
 ::: small-text
@@ -598,7 +600,7 @@ knitr::kable(
 - Moving forward, only the City of Toronto has exceeded its housing target.
 :::
 
-## Limitations and Policy Implications
+## Limitations
 
 ::: small-text
 There are many limitations to this study:
